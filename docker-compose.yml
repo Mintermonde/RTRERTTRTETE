@@ -1,0 +1,17 @@
+services:
+  uav-postgres-db:
+    image: postgres:15-alpine
+    container_name: uav_civil_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d/
+      - uav_db_data:/var/lib/postgresql/data
+
+volumes:
+  uav_db_data:

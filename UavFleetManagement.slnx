@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/UavFleetManagement.Api/UavFleetManagement.Api.csproj" />
+    <Project Path="src/UavFleetManagement.Application/UavFleetManagement.Application.csproj" />
+    <Project Path="src/UavFleetManagement.Domain/UavFleetManagement.Domain.csproj" />
+    <Project Path="src/UavFleetManagement.Infrastructure/UavFleetManagement.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/UavFleetManagement.UnitTests/UavFleetManagement.UnitTests.csproj" />
+    <Project Path="tests/UavFleetManagement.IntegrationTests/UavFleetManagement.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

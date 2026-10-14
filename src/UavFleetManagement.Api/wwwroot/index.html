@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Единое окно БАС РФ — UAV Fleet Management (EDA & Enterprise)</title>
+  
+  <!-- Bootstrap 5.3 & Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  
+  <!-- React 18 & ReactDOM 18 -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel Standalone for JSX compilation in browser -->
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.4/babel.min.js"></script>
+
+  <style>
+    body {
+      background-color: #f4f6f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .navbar-eda {
+      background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    .badge-eda {
+      font-size: 0.8rem;
+      padding: 0.4em 0.7em;
+      border-radius: 6px;
+    }
+    .badge-pending {
+      background-color: #f59e0b;
+      color: #000;
+      animation: pulse 1.8s infinite;
+    }
+    .badge-processing {
+      background-color: #3b82f6;
+      color: #fff;
+    }
+    .badge-published {
+      background-color: #10b981;
+      color: #fff;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.55; }
+      100% { opacity: 1; }
+    }
+    .card-eda {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+      margin-bottom: 1.5rem;
+      background: #fff;
+    }
+    .card-eda-header {
+      border-top-left-radius: 12px !important;
+      border-top-right-radius: 12px !important;
+      font-weight: 600;
+      background-color: #ffffff;
+      border-bottom: 1px solid #eef2f6;
+      padding: 1rem 1.25rem;
+    }
+    .masked-val {
+      background: #fef3c7;
+      color: #b45309;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    .unmasked-val {
+      background: #d1fae5;
+      color: #047857;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    .timer-pill {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(4px);
+      color: #e0f2fe;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 20px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.85rem;
+    }
+    .json-box {
+      background: #1e293b;
+      color: #38bdf8;
+      font-family: Consolas, monospace;
+      font-size: 0.82rem;
+      border-radius: 8px;
+      padding: 1rem;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .role-btn {
+      transition: all 0.2s ease;
+      font-size: 0.85rem;
+    }
+    .role-btn:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="root"></div>
+
+  <!-- React 18 Application Script -->
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    const API_BASE = window.location.origin;
+
+    // =========================================================================
+    // ГЛАВНЫЙ КОМПОНЕНТ ПРИЛОЖЕНИЯ
+    // =========================================================================
+    function App() {
+      // Состояние сессии
+      const [token, setToken] = useState(() => localStorage.getItem('uav_access_token'));
+      const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem('uav_refresh_token'));
+      const [user, setUser] = useState(() => {
+        const saved = localStorage.getItem('uav_user_profile');
+        return saved ? JSON.parse(saved) : null;
+      });
+
+      // Текущая активная вкладка
+      const [activeTab, setActiveTab] = useState('dashboard');
+      // Таймер обновления JWT (30 минут = 1800 сек)
+      const [secondsLeft, setSecondsLeft] = useState(1800);
+      const [refreshStatus, setRefreshStatus] = useState('');
+
+      // Уведомления / Toast
+      const [alert, setAlert] = useState(null);
+
+      const showAlert = (message, type = 'info') => {
+        setAlert({ message, type });
+        setTimeout(() => setAlert(null), 5000);
+      };
+
+      // =======================================================================
+      // МЕХАНИЗМ АВТООБНОВЛЕНИЯ JWT КАЖДЫЕ 30 МИНУТ
+      // =======================================================================
+      const performTokenRefresh = useCallback(async () => {
+        const currentRefresh = localStorage.getItem('uav_refresh_token');
+        const currentAccess = localStorage.getItem('uav_access_token');
+        if (!currentRefresh || !currentAccess) return;
+
+        try {
+          setRefreshStatus('Обновление токена...');
+          const resp = await fetch(`${API_BASE}/api/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accessToken: currentAccess,
+              refreshToken: currentRefresh
+            })
+          });
+
+          if (resp.ok) {
+            const data = await resp.json();
+            localStorage.setItem('uav_access_token', data.token);
+            localStorage.setItem('uav_refresh_token', data.refreshToken);
+            setToken(data.token);
+            setRefreshToken(data.refreshToken);
+            setSecondsLeft(1800); // сброс на 30 минут
+            setRefreshStatus('Успешно обновлен');
+            setTimeout(() => setRefreshStatus(''), 4000);
+          } else {
+            console.warn('Не удалось обновить JWT токен, требуется повторный вход');
+            handleLogout();
+          }
+        } catch (err) {
+          console.error('Ошибка сети при обновлении токена:', err);
+          setRefreshStatus('Ошибка сети');
+        }
+      }, []);
+
+      // Таймер обратного отсчета 30 минут
+      useEffect(() => {
+        if (!token) return;
+
+        const interval = setInterval(() => {
+          setSecondsLeft(prev => {
+            if (prev <= 1) {
+              performTokenRefresh();
+              return 1800;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+
+        return () => clearInterval(interval);
+      }, [token, performTokenRefresh]);
+
+      const handleLoginSuccess = (authData) => {
+        localStorage.setItem('uav_access_token', authData.token);
+        localStorage.setItem('uav_refresh_token', authData.refreshToken);
+        const profile = { username: authData.username, role: authData.role };
+        localStorage.setItem('uav_user_profile', JSON.stringify(profile));
+        setToken(authData.token);
+        setRefreshToken(authData.refreshToken);
+        setUser(profile);
+        setSecondsLeft(1800);
+        showAlert(`Добро пожаловать, ${authData.username}! Роль: ${authData.role}`, 'success');
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('uav_access_token');
+        localStorage.removeItem('uav_refresh_token');
+        localStorage.removeItem('uav_user_profile');
+        setToken(null);
+        setRefreshToken(null);
+        setUser(null);
+        setActiveTab('guest');
+        showAlert('Сессия завершена', 'info');
+      };
+
+      // Форматирование времени таймера
+      const formatTime = (secs) => {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+      };
+
+      return (
+        <div className="d-flex flex-column min-vh-100">
+          {/* Верхняя навигационная панель */}
+          <nav className="navbar navbar-expand-lg navbar-dark navbar-eda py-2 px-3">
+            <div className="container-fluid">
+              <a className="navbar-brand d-flex align-items-center" href="#" onClick={() => setActiveTab(token ? 'dashboard' : 'guest')}>
+                <i className="bi bi-airplane-engines-fill text-warning fs-3 me-2"></i>
+                <div>
+                  <div className="fw-bold fs-5">Единое окно БАС РФ</div>
+                  <div className="small text-light opacity-75" style={{fontSize: '0.75rem'}}>EDA &bull; ПП РФ № 658 &bull; ст. 131 ВЗК РФ</div>
+                </div>
+              </a>
+
+              <div className="d-flex align-items-center gap-3">
+                {token && (
+                  <div className="d-flex align-items-center gap-2">
+                    <span className="timer-pill d-none d-md-flex align-items-center gap-2" title="Периодическая ротация JWT каждые 30 минут">
+                      <i className="bi bi-shield-check text-success"></i>
+                      <span>JWT: <strong>{formatTime(secondsLeft)}</strong></span>
+                      {refreshStatus && <span className="badge bg-info text-dark">{refreshStatus}</span>}
+                    </span>
+                    <button className="btn btn-outline-light btn-sm" onClick={performTokenRefresh} title="Обновить JWT сейчас">
+                      <i className="bi bi-arrow-repeat"></i>
+                    </button>
+                    <span className="badge bg-light text-dark fw-bold px-3 py-2">
+                      <i className="bi bi-person-badge me-1 text-primary"></i>
+                      {user?.username} ({user?.role})
+                    </span>
+                    <button className="btn btn-danger btn-sm" onClick={handleLogout}>
+                      <i className="bi bi-box-arrow-right me-1"></i> Выйти
+                    </button>
+                  </div>
+                )}
+                {!token && (
+                  <span className="badge bg-secondary px-3 py-2">
+                    <i className="bi bi-shield-lock me-1"></i> Неавторизованный гость (БД защищена)
+                  </span>
+                )}
+              </div>
+            </div>
+          </nav>
+
+          {/* Плашка ролей для быстрого тестирования в 1 клик */}
+          <RoleSwitcher onSelectRole={handleLoginSuccess} currentRole={user?.role} />
+
+          {/* Алерт */}
+          {alert && (
+            <div className="container mt-3">
+              <div className={`alert alert-${alert.type} alert-dismissible fade show`} role="alert">
+                {alert.message}
+                <button type="button" className="btn-close" onClick={() => setAlert(null)}></button>
+              </div>
+            </div>
+          )}
+
+          {/* Основной контент */}
+          <main className="container-fluid px-4 py-4 flex-grow-1">
+            {!token ? (
+              <GuestPortal onLoginSuccess={handleLoginSuccess} />
+            ) : (
+              <AuthenticatedWorkspace 
+                token={token} 
+                user={user} 
+                activeTab={activeTab} 
+                setActiveTab={setActiveTab} 
+                showAlert={showAlert} 
+              />
+            )}
+          </main>
+
+          <footer className="bg-white border-top py-3 text-center text-muted small mt-auto">
+            Цифровая платформа БАС РФ &bull; .NET 8 / C# 12 / PostgreSQL 15 &bull; Event-Driven Architecture &bull; React 18
+          </footer>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // БЫСТРЫЙ СЕЛЕКТОР РОЛЕЙ (1-CLICK ROLE SWITCHER)
+    // =========================================================================
+    function RoleSwitcher({ onSelectRole, currentRole }) {
+      const [loading, setLoading] = useState(false);
+
+      const roles = [
+        { label: 'Администратор', user: 'admin', pass: 'Admin123!', role: 'Superuser', isSuper: true, color: 'danger' },
+        { label: 'Клиент (ЮЛ/ФЛ)', user: 'client', pass: 'Client123!', role: 'Client', isSuper: false, color: 'primary' },
+        { label: 'Внешний пилот', user: 'pilot', pass: 'Pilot123!', role: 'Pilot', isSuper: false, color: 'info' },
+        { label: 'Инженер ТОиР', user: 'engineer', pass: 'Engineer123!', role: 'Engineer', isSuper: false, color: 'warning' },
+        { label: 'Страховой агент', user: 'agent', pass: 'Agent123!', role: 'Agent', isSuper: false, color: 'success' },
+        { label: 'Бухгалтер', user: 'accountant', pass: 'Accountant123!', role: 'Accountant', isSuper: false, color: 'secondary' },
+        { label: 'Аудитор / Росавиация', user: 'auditor', pass: 'Auditor123!', role: 'Auditor', isSuper: false, color: 'dark' },
+      ];
+
+      const quickLogin = async (r) => {
+        setLoading(true);
+        try {
+          const url = r.isSuper ? `${API_BASE}/api/auth/superuser/login` : `${API_BASE}/api/auth/login`;
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: r.user, password: r.pass })
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            onSelectRole(data);
+          } else {
+            console.error('Ошибка быстрого входа под ролью', r.user);
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="bg-light border-bottom py-2 px-3">
+          <div className="container-fluid d-flex flex-wrap align-items-center gap-2">
+            <span className="small text-muted fw-bold me-1">
+              <i className="bi bi-lightning-charge-fill text-warning me-1"></i>Быстрый вход (8 ролей):
+            </span>
+            {roles.map(r => (
+              <button
+                key={r.user}
+                disabled={loading}
+                className={`btn btn-sm role-btn btn-outline-${r.color} ${currentRole === r.role ? 'active fw-bold' : ''}`}
+                onClick={() => quickLogin(r)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // ПОРТАЛ ГОСТЯ (ZERO-TRUST ИЗОЛЯЦИЯ ОТ БД)
+    // =========================================================================
+    function GuestPortal({ onLoginSuccess }) {
+      const [loginUser, setLoginUser] = useState('admin');
+      const [loginPass, setLoginPass] = useState('Admin123!');
+      const [isSuperuserCheck, setIsSuperuserCheck] = useState(true);
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      // Локальный калькулятор ст. 131 ВЗК РФ (без БД!)
+      const [mtowInput, setMtowInput] = useState(9.3);
+      const [localMrot, setLocalMrot] = useState(19242);
+
+      const handleManualLogin = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+          const endpoint = isSuperuserCheck ? '/api/auth/superuser/login' : '/api/auth/login';
+          const resp = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: loginUser, password: loginPass })
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            setError(errData.error || 'Неверный логин или пароль');
+            return;
+          }
+
+          const data = await resp.json();
+          onLoginSuccess(data);
+        } catch (err) {
+          setError('Сетевая ошибка сервера');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const calcMinLiability = (mtowInput * 2 * localMrot).toLocaleString('ru-RU', { minimumFractionDigits: 2 });
+      const calcCivilPremium = (mtowInput * 2 * localMrot * 0.015).toLocaleString('ru-RU', { minimumFractionDigits: 2 });
+      const calcCommission = (mtowInput * 2 * localMrot * 0.015 * 0.30).toLocaleString('ru-RU', { minimumFractionDigits: 2 });
+
+      return (
+        <div className="container py-4">
+          <div className="alert alert-warning border-warning d-flex align-items-center mb-4">
+            <i className="bi bi-shield-exclamation fs-3 me-3 text-warning"></i>
+            <div>
+              <strong>Режим нулевого доверия (Zero-Trust Security):</strong> Прямой анонимный доступ к данным базы данных (борты, модели, организации, ТОиР) полностью заблокирован (401 Unauthorized). Авторизуйтесь для доступа к реестрам.
+            </div>
+          </div>
+
+          <div className="row g-4">
+            {/* Форма авторизации */}
+            <div className="col-lg-5">
+              <div className="card card-eda h-100">
+                <div className="card-eda-header d-flex align-items-center">
+                  <i className="bi bi-lock-fill text-primary me-2"></i>
+                  <span>Авторизация в системе</span>
+                </div>
+                <div className="card-body p-4">
+                  {error && <div className="alert alert-danger py-2 small">{error}</div>}
+                  <form onSubmit={handleManualLogin}>
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold">Имя пользователя / Логин</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={loginUser} 
+                        onChange={e => setLoginUser(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold">Пароль</label>
+                      <input 
+                        type="password" 
+                        className="form-control" 
+                        value={loginPass} 
+                        onChange={e => setLoginPass(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    <div className="form-check mb-4">
+                      <input 
+                        type="checkbox" 
+                        className="form-check-input" 
+                        id="superCheck" 
+                        checked={isSuperuserCheck} 
+                        onChange={e => setIsSuperuserCheck(e.target.checked)} 
+                      />
+                      <label className="form-check-label small" htmlFor="superCheck">
+                        Вход суперпользователя (Администратора)
+                      </label>
+                    </div>
+                    <button type="submit" disabled={loading} className="btn btn-primary w-100 py-2 fw-bold">
+                      {loading ? 'Проверка...' : 'Войти в личный кабинет'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            {/* Автономный калькулятор Гостя */}
+            <div className="col-lg-7">
+              <div className="card card-eda h-100">
+                <div className="card-eda-header d-flex align-items-center justify-content-between">
+                  <div>
+                    <i className="bi bi-calculator-fill text-success me-2"></i>
+                    <span>Гостевой калькулятор ст. 131 ВЗК РФ (Client-side)</span>
+                  </div>
+                  <span className="badge bg-success">Без обращения к БД</span>
+                </div>
+                <div className="card-body p-4">
+                  <p className="text-muted small">
+                    Расчет обязательной страховой ответственности гражданских БВС перед третьими лицами по формуле ст. 131 ВЗК РФ: <strong>Лимит = MTOW (кг) &times; 2 &times; МРОТ</strong>.
+                  </p>
+                  
+                  <div className="row g-3 mb-3">
+                    <div className="col-sm-6">
+                      <label className="form-label small fw-bold">Взлетная масса (MTOW), кг</label>
+                      <input 
+                        type="number" 
+                        step="0.1" 
+                        className="form-control" 
+                        value={mtowInput} 
+                        onChange={e => setMtowInput(parseFloat(e.target.value) || 0)} 
+                      />
+                    </div>
+                    <div className="col-sm-6">
+                      <label className="form-label small fw-bold">МРОТ РФ, руб.</label>
+                      <input 
+                        type="number" 
+                        className="form-control" 
+                        value={localMrot} 
+                        onChange={e => setLocalMrot(parseFloat(e.target.value) || 0)} 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-light rounded-3 border">
+                    <div className="d-flex justify-content-between py-1 border-bottom">
+                      <span className="text-muted">Мин. страховая сумма (ст. 131 ВЗК):</span>
+                      <strong className="text-dark">{calcMinLiability} руб.</strong>
+                    </div>
+                    <div className="d-flex justify-content-between py-1 border-bottom">
+                      <span className="text-muted">Ориентировочная премия (1.5%):</span>
+                      <strong className="text-primary">{calcCivilPremium} руб.</strong>
+                    </div>
+                    <div className="d-flex justify-content-between py-1">
+                      <span className="text-muted">Агентская комиссия сервиса (30%):</span>
+                      <strong className="text-success">{calcCommission} руб.</strong>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-muted small">
+                    <i className="bi bi-info-circle me-1"></i> Оформление полиса с внесением в реестр доступно после входа в систему.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // АВТОРИЗОВАННАЯ РАБОЧАЯ ОБЛАСТЬ (REACT WORKSPACE)
+    // =========================================================================
+    function AuthenticatedWorkspace({ token, user, activeTab, setActiveTab, showAlert }) {
+      return (
+        <div>
+          {/* Навигационные табы */}
+          <ul className="nav nav-pills mb-4 bg-white p-2 rounded-3 shadow-sm">
+            <li className="nav-item">
+              <button 
+                className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} 
+                onClick={() => setActiveTab('dashboard')}
+              >
+                <i className="bi bi-speedometer2 me-1"></i> Дашборд & Outbox
+              </button>
+            </li>
+            <li className="nav-item">
+              <button 
+                className={`nav-link ${activeTab === 'registration' ? 'active' : ''}`} 
+                onClick={() => setActiveTab('registration')}
+              >
+                <i className="bi bi-file-earmark-check me-1"></i> Госучет БАС (ПП РФ № 658)
+              </button>
+            </li>
+            <li className="nav-item">
+              <button 
+                className={`nav-link ${activeTab === 'insurance' ? 'active' : ''}`} 
+                onClick={() => setActiveTab('insurance')}
+              >
+                <i className="bi bi-shield-shaded me-1"></i> Страхование (ст. 131 ВЗК)
+              </button>
+            </li>
+            <li className="nav-item">
+              <button 
+                className={`nav-link ${activeTab === 'organizations' ? 'active' : ''}`} 
+                onClick={() => setActiveTab('organizations')}
+              >
+                <i className="bi bi-buildings me-1"></i> Реестр компаний (152-ФЗ)
+              </button>
+            </li>
+            <li className="nav-item">
+              <button 
+                className={`nav-link ${activeTab === 'storage' ? 'active' : ''}`} 
+                onClick={() => setActiveTab('storage')}
+              >
+                <i className="bi bi-cloud-arrow-up me-1"></i> S3 Хранилище
+              </button>
+            </li>
+            <li className="nav-item">
+              <button 
+                className={`nav-link ${activeTab === 'billing' ? 'active' : ''}`} 
+                onClick={() => setActiveTab('billing')}
+              >
+                <i className="bi bi-receipt me-1"></i> Биллинг и Финансы
+              </button>
+            </li>
+          </ul>
+
+          {/* Отображение выбранного модуля */}
+          {activeTab === 'dashboard' && <DashboardModule token={token} user={user} />}
+          {activeTab === 'registration' && <RegistrationModule token={token} user={user} showAlert={showAlert} />}
+          {activeTab === 'insurance' && <InsuranceModule token={token} user={user} showAlert={showAlert} />}
+          {activeTab === 'organizations' && <OrganizationsModule token={token} user={user} showAlert={showAlert} />}
+          {activeTab === 'storage' && <StorageModule token={token} user={user} showAlert={showAlert} />}
+          {activeTab === 'billing' && <BillingModule token={token} user={user} showAlert={showAlert} />}
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // МОДУЛЬ 1: ДАШБОРД И МОНИТОРИНГ OUTBOX/INBOX
+    // =========================================================================
+    function DashboardModule({ token, user }) {
+      const [stats, setStats] = useState({ applications: 0, policies: 0, organizations: 0, uavs: 0 });
+      const [recentApps, setRecentApps] = useState([]);
+
+      const loadData = useCallback(async () => {
+        try {
+          const headers = { 'Authorization': `Bearer ${token}` };
+          const [appsRes, polRes, orgRes, uavRes] = await Promise.all([
+            fetch(`${API_BASE}/api/registration/applications`, { headers }),
+            fetch(`${API_BASE}/api/insurance/policies`, { headers }),
+            fetch(`${API_BASE}/api/organizations`, { headers }),
+            fetch(`${API_BASE}/api/uavinstances`, { headers })
+          ]);
+
+          if (appsRes.ok) {
+            const apps = await appsRes.json();
+            setRecentApps(apps.slice(0, 5));
+            setStats(prev => ({ ...prev, applications: apps.length }));
+          }
+          if (polRes.ok) {
+            const pols = await polRes.json();
+            setStats(prev => ({ ...prev, policies: pols.length }));
+          }
+          if (orgRes.ok) {
+            const orgs = await orgRes.json();
+            setStats(prev => ({ ...prev, organizations: orgs.length }));
+          }
+          if (uavRes.ok) {
+            const uavs = await uavRes.json();
+            setStats(prev => ({ ...prev, uavs: uavs.length }));
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, [token]);
+
+      useEffect(() => {
+        loadData();
+        const interval = setInterval(loadData, 4000); // Live polling раз в 4 сек
+        return () => clearInterval(interval);
+      }, [loadData]);
+
+      return (
+        <div>
+          {/* Карточки метрик */}
+          <div className="row g-3 mb-4">
+            <div className="col-md-3">
+              <div className="card card-eda p-3 border-start border-4 border-primary">
+                <div className="text-muted small">Заявлений на госучет</div>
+                <div className="fs-3 fw-bold text-primary">{stats.applications}</div>
+                <div className="small text-success"><i className="bi bi-clock-history"></i> Регламент ПП № 658</div>
+              </div>
+            </div>
+            <div className="col-md-3">
+              <div className="card card-eda p-3 border-start border-4 border-success">
+                <div className="text-muted small">Действующих полисов</div>
+                <div className="fs-3 fw-bold text-success">{stats.policies}</div>
+                <div className="small text-muted"><i className="bi bi-percent"></i> Комиссия сервиса 30%</div>
+              </div>
+            </div>
+            <div className="col-md-3">
+              <div className="card card-eda p-3 border-start border-4 border-info">
+                <div className="text-muted small">Организаций в реестре</div>
+                <div className="fs-3 fw-bold text-info">{stats.organizations}</div>
+                <div className="small text-muted"><i className="bi bi-shield-check"></i> Верификация СМЭВ 3</div>
+              </div>
+            </div>
+            <div className="col-md-3">
+              <div className="card card-eda p-3 border-start border-4 border-warning">
+                <div className="text-muted small">Физических бортов</div>
+                <div className="fs-3 fw-bold text-warning">{stats.uavs}</div>
+                <div className="small text-muted"><i className="bi bi-airplane"></i> Мастер-данные AMDB</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Таблица последних событий с асинхронными статусами */}
+          <div className="card card-eda">
+            <div className="card-eda-header d-flex justify-content-between align-items-center">
+              <div>
+                <i className="bi bi-broadcast text-danger me-2"></i>
+                <span>Асинхронные задачи и события очередей (Live Polling)</span>
+              </div>
+              <span className="badge bg-light text-dark">Автообновление: 4 сек</span>
+            </div>
+            <div className="card-body p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Номер заявления</th>
+                      <th>Тип услуги</th>
+                      <th>Модель БАС</th>
+                      <th>Серийный номер</th>
+                      <th>Срок SLA</th>
+                      <th>Статус СМЭВ 4</th>
+                      <th>Рег. номер</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentApps.map(a => (
+                      <tr key={a.applicationId}>
+                        <td className="fw-bold">{a.applicationNumber}</td>
+                        <td>{a.applicationType}</td>
+                        <td>{a.uavModelName}</td>
+                        <td><code>{a.serialNumber}</code></td>
+                        <td>{a.slaWorkingDays} р.д.</td>
+                        <td>
+                          {a.status === 'Pending' && <span className="badge badge-eda badge-pending"><i className="bi bi-hourglass-split me-1"></i> В обработке (Outbox)</span>}
+                          {a.status === 'Approved' && <span className="badge badge-eda badge-published"><i className="bi bi-check-circle me-1"></i> Одобрено Росавиацией</span>}
+                          {a.status === 'UnderReview' && <span className="badge badge-eda badge-processing">Проверка</span>}
+                          {a.status === 'Rejected' && <span className="badge bg-danger">Отклонено</span>}
+                        </td>
+                        <td>
+                          {a.rosaviatsiaNumber ? (
+                            <span className="unmasked-val">{a.rosaviatsiaNumber}</span>
+                          ) : (
+                            <span className="text-muted small">Формируется...</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {recentApps.length === 0 && (
+                      <tr><td colSpan="7" className="text-center py-4 text-muted">Заявок пока нет</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // МОДУЛЬ 2: ГОСУЧЕТ БАС (ПП РФ № 658)
+    // =========================================================================
+    function RegistrationModule({ token, user, showAlert }) {
+      const [apps, setApps] = useState([]);
+      const [showModal, setShowModal] = useState(false);
+      const [submitting, setSubmitting] = useState(false);
+
+      // Форма заявления
+      const [form, setForm] = useState({
+        applicationType: 'InitialRegistration',
+        applicantOwnerId: 1,
+        applicantType: 'LE',
+        uavModelName: 'Геоскан 401',
+        serialNumber: `GS-401-${Math.floor(1000 + Math.random() * 9000)}`,
+        engineType: 'Electric',
+        engineCount: 4,
+        mtowKg: 9.30,
+        maxTakeoffWeightCategory: 'Range150gTo30kg'
+      });
+
+      const loadApps = useCallback(async () => {
+        try {
+          const resp = await fetch(`${API_BASE}/api/registration/applications`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) {
+            setApps(await resp.json());
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, [token]);
+
+      useEffect(() => {
+        loadApps();
+        const interval = setInterval(loadApps, 3000);
+        return () => clearInterval(interval);
+      }, [loadApps]);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+          const resp = await fetch(`${API_BASE}/api/registration/applications`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(form)
+          });
+
+          if (resp.status === 202) {
+            const result = await resp.json();
+            showAlert(`Заявление ${result.applicationNumber} принято (202 Accepted)! Событие отправлено в Outbox.`, 'success');
+            setShowModal(false);
+            loadApps();
+          } else {
+            showAlert('Ошибка отправки заявления', 'danger');
+          }
+        } catch (e) {
+          showAlert('Сетевая ошибка', 'danger');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      return (
+        <div>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h5 className="mb-0 fw-bold">Реестр государственных заявлений (ПП РФ № 658)</h5>
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+              <i className="bi bi-plus-circle me-1"></i> Подать заявление на госучет
+            </button>
+          </div>
+
+          <div className="card card-eda">
+            <div className="card-body p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Номер</th>
+                      <th>Регламент</th>
+                      <th>Заявитель</th>
+                      <th>БАС и ТТХ</th>
+                      <th>Срок SLA</th>
+                      <th>Статус обработки</th>
+                      <th>Учетный номер</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apps.map(a => (
+                      <tr key={a.applicationId}>
+                        <td className="fw-bold">{a.applicationNumber}</td>
+                        <td>
+                          {a.applicationType === 'InitialRegistration' && 'Первичная постановка'}
+                          {a.applicationType === 'ModificationOfData' && 'Смена владельца / ТТХ'}
+                          {a.applicationType === 'Deregistration' && 'Снятие с учета'}
+                          {a.applicationType === 'DuplicateOrExtract' && 'Выписка'}
+                        </td>
+                        <td>{a.applicantOwnerName || 'Владелец #1'}</td>
+                        <td>
+                          {a.uavModelName} (MTOW: {a.mtowKg} кг)
+                          <div className="text-muted small">SN: {a.serialNumber}</div>
+                        </td>
+                        <td>{a.slaWorkingDays} р.д.</td>
+                        <td>
+                          {a.status === 'Pending' && <span className="badge badge-eda badge-pending">202 В очереди Outbox</span>}
+                          {a.status === 'Approved' && <span className="badge badge-eda badge-published">Одобрено СМЭВ 4</span>}
+                          {a.status === 'Rejected' && <span className="badge bg-danger">Отклонено</span>}
+                        </td>
+                        <td>
+                          {a.rosaviatsiaNumber ? (
+                            <span className="unmasked-val">{a.rosaviatsiaNumber}</span>
+                          ) : (
+                            <span className="text-muted small">Ожидание воркера...</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Модальное окно подачи заявления */}
+          {showModal && (
+            <div className="modal show d-block" tabIndex="-1" style={{background: 'rgba(0,0,0,0.5)'}}>
+              <div className="modal-dialog modal-lg">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title fw-bold">Мастер подачи заявления на госучет БАС</h5>
+                    <button type="button" className="btn-close" onClick={() => setShowModal(false)}></button>
+                  </div>
+                  <form onSubmit={handleSubmit}>
+                    <div className="modal-body">
+                      <div className="row g-3">
+                        <div className="col-md-6">
+                          <label className="form-label small fw-bold">Тип государственной услуги</label>
+                          <select 
+                            className="form-select" 
+                            value={form.applicationType} 
+                            onChange={e => setForm({...form, applicationType: e.target.value})}
+                          >
+                            <option value="InitialRegistration">Первичная постановка на госучет (5 р.д.)</option>
+                            <option value="ModificationOfData">Внесение изменений / смена владельца (5 р.д.)</option>
+                            <option value="Deregistration">Снятие с учета (3 р.д.)</option>
+                            <option value="DuplicateOrExtract">Выписка из реестра (1 р.д.)</option>
+                          </select>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label small fw-bold">Модель БАС</label>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            value={form.uavModelName} 
+                            onChange={e => setForm({...form, uavModelName: e.target.value})} 
+                            required 
+                          />
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label small fw-bold">Заводской серийный номер</label>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            value={form.serialNumber} 
+                            onChange={e => setForm({...form, serialNumber: e.target.value})} 
+                            required 
+                          />
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label small fw-bold">Максимальная взлетная масса (MTOW, кг)</label>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            className="form-control" 
+                            value={form.mtowKg} 
+                            onChange={e => setForm({...form, mtowKg: parseFloat(e.target.value) || 0})} 
+                            required 
+                          />
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label small fw-bold">Тип двигателя</label>
+                          <select 
+                            className="form-select" 
+                            value={form.engineType} 
+                            onChange={e => setForm({...form, engineType: e.target.value})}
+                          >
+                            <option value="Electric">Электрический (Electric)</option>
+                            <option value="ICE_Gasoline">ДВС (Бензин)</option>
+                            <option value="Turboprop">Турбовинтовой</option>
+                            <option value="Hybrid">Гибридный</option>
+                          </select>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label small fw-bold">Количество двигателей</label>
+                          <input 
+                            type="number" 
+                            className="form-control" 
+                            value={form.engineCount} 
+                            onChange={e => setForm({...form, engineCount: parseInt(e.target.value) || 1})} 
+                            required 
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3 p-3 bg-light rounded text-muted small">
+                        <i className="bi bi-info-circle me-1"></i> Заявление отправляется в формате асинхронного события. Бэкенд возвращает статус <code>202 Accepted</code>, а фоновый воркер СМЭВ 4 автоматически валидирует параметры и присваивает регистрационный номер.
+                      </div>
+                    </div>
+                    <div className="modal-footer">
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
+                      <button type="submit" disabled={submitting} className="btn btn-primary">
+                        {submitting ? 'Отправка...' : 'Отправить в Росавиацию'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // МОДУЛЬ 3: СТРАХОВАНИЕ (СТ. 131 ВЗК РФ + 30% КОМИССИЯ)
+    // =========================================================================
+    function InsuranceModule({ token, user, showAlert }) {
+      const [policies, setPolicies] = useState([]);
+      const [mtow, setMtow] = useState(9.3);
+      const [basePrice, setBasePrice] = useState(1850000);
+      const [includeCasco, setIncludeCasco] = useState(true);
+      const [calcResult, setCalcResult] = useState(null);
+      const [issuing, setIssuing] = useState(false);
+
+      const loadPolicies = useCallback(async () => {
+        try {
+          const resp = await fetch(`${API_BASE}/api/insurance/policies`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) setPolicies(await resp.json());
+        } catch (e) {
+          console.error(e);
+        }
+      }, [token]);
+
+      useEffect(() => {
+        loadPolicies();
+      }, [loadPolicies]);
+
+      const handleCalculate = async () => {
+        try {
+          const resp = await fetch(`${API_BASE}/api/insurance/calculate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              mtowKg: mtow,
+              basePriceRub: basePrice,
+              includeCasco: includeCasco
+            })
+          });
+
+          if (resp.ok) {
+            setCalcResult(await resp.json());
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleIssuePolicy = async () => {
+        if (!calcResult) return;
+        setIssuing(true);
+        try {
+          const resp = await fetch(`${API_BASE}/api/insurance/policies`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              uavInstanceId: 1,
+              ownerId: 1,
+              policyType: 'CivilLiabilityVzk131',
+              sumInsuredRub: calcResult.calculatedMinLiabilitySumRub,
+              premiumRub: calcResult.totalPremiumRub,
+              startDate: new Date().toISOString().split('T')[0],
+              expiryDate: new Date(Date.now() + 365*24*3600*1000).toISOString().split('T')[0]
+            })
+          });
+
+          if (resp.ok) {
+            showAlert('Полис успешно выписан и отправлен в очередь Outbox!', 'success');
+            loadPolicies();
+          }
+        } catch (e) {
+          showAlert('Ошибка выпуска полиса', 'danger');
+        } finally {
+          setIssuing(false);
+        }
+      };
+
+      const exportCsv = () => {
+        window.open(`${API_BASE}/api/insurance/export?token=${token}`, '_blank');
+      };
+
+      return (
+        <div>
+          <div className="row g-4 mb-4">
+            {/* Форма расчета */}
+            <div className="col-lg-6">
+              <div className="card card-eda h-100">
+                <div className="card-eda-header">
+                  <i className="bi bi-calculator text-primary me-2"></i>
+                  <span>Официальный расчет по ст. 131 ВЗК РФ</span>
+                </div>
+                <div className="card-body">
+                  <div className="mb-3">
+                    <label className="form-label small fw-bold">Масса MTOW (кг)</label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      className="form-control" 
+                      value={mtow} 
+                      onChange={e => setMtow(parseFloat(e.target.value) || 0)} 
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label small fw-bold">Базовая цена борта (руб.)</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      value={basePrice} 
+                      onChange={e => setBasePrice(parseFloat(e.target.value) || 0)} 
+                    />
+                  </div>
+                  <div className="form-check mb-3">
+                    <input 
+                      type="checkbox" 
+                      className="form-check-input" 
+                      id="cascoCheck" 
+                      checked={includeCasco} 
+                      onChange={e => setIncludeCasco(e.target.checked)} 
+                    />
+                    <label className="form-check-label small" htmlFor="cascoCheck">Включить КАСКО борта (4.5%)</label>
+                  </div>
+                  <button className="btn btn-outline-primary w-100" onClick={handleCalculate}>
+                    Рассчитать страховую сумму и премию
+                  </button>
+
+                  {calcResult && (
+                    <div className="mt-3 p-3 bg-light rounded border">
+                      <div className="d-flex justify-content-between py-1 border-bottom">
+                        <span className="small text-muted">Лимит ст. 131 ВЗК (MTOW &times; 2 &times; МРОТ):</span>
+                        <strong>{calcResult.calculatedMinLiabilitySumRub.toLocaleString('ru-RU')} руб.</strong>
+                      </div>
+                      <div className="d-flex justify-content-between py-1 border-bottom">
+                        <span className="small text-muted">Премия гражданской ответственности:</span>
+                        <span>{calcResult.civilLiabilityPremiumRub.toLocaleString('ru-RU')} руб.</span>
+                      </div>
+                      {calcResult.cascoPremiumRub && (
+                        <div className="d-flex justify-content-between py-1 border-bottom">
+                          <span className="small text-muted">Премия КАСКО:</span>
+                          <span>{calcResult.cascoPremiumRub.toLocaleString('ru-RU')} руб.</span>
+                        </div>
+                      )}
+                      <div className="d-flex justify-content-between py-1 border-bottom">
+                        <span className="small text-muted">Итого премия к оплате:</span>
+                        <strong className="text-primary">{calcResult.totalPremiumRub.toLocaleString('ru-RU')} руб.</strong>
+                      </div>
+                      <div className="d-flex justify-content-between py-1 text-success">
+                        <span className="small">Агентская комиссия сервиса (30%):</span>
+                        <strong>{calcResult.agentCommissionRub.toLocaleString('ru-RU')} руб.</strong>
+                      </div>
+                      <button 
+                        disabled={issuing} 
+                        className="btn btn-success w-100 mt-3" 
+                        onClick={handleIssuePolicy}
+                      >
+                        <i className="bi bi-shield-check me-1"></i> Оформить полис в системе
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Экспорт и пояснения */}
+            <div className="col-lg-6">
+              <div className="card card-eda h-100">
+                <div className="card-eda-header d-flex justify-content-between align-items-center">
+                  <span>Реестр договоров страхования</span>
+                  <button className="btn btn-sm btn-outline-success" onClick={exportCsv}>
+                    <i className="bi bi-file-earmark-excel me-1"></i> Экспорт CSV
+                  </button>
+                </div>
+                <div className="card-body p-0">
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle mb-0 small">
+                      <thead className="table-light">
+                        <tr>
+                          <th>Номер полиса</th>
+                          <th>Борт</th>
+                          <th>Сумма (ВЗК)</th>
+                          <th>Премия</th>
+                          <th>Комиссия 30%</th>
+                          <th>Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {policies.map(p => (
+                          <tr key={p.policyId}>
+                            <td className="fw-bold">{p.policyNumber}</td>
+                            <td>{p.uavSerialNumber || 'Борт #1'}</td>
+                            <td>{p.sumInsuredRub.toLocaleString('ru-RU')} руб.</td>
+                            <td>{p.premiumRub.toLocaleString('ru-RU')} руб.</td>
+                            <td className="text-success">{p.commissionRub.toLocaleString('ru-RU')} руб.</td>
+                            <td>
+                              <span className="badge bg-success">{p.status}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // МОДУЛЬ 4: РЕЕСТР ОРГАНИЗАЦИЙ (ОТКРЫТЫЙ ПОИСК С МАСКИРОВАНИЕМ 152-ФЗ)
+    // =========================================================================
+    function OrganizationsModule({ token, user, showAlert }) {
+      const [orgs, setOrgs] = useState([]);
+      const [search, setSearch] = useState('');
+      const [industry, setIndustry] = useState('');
+
+      const loadOrgs = useCallback(async () => {
+        try {
+          const url = new URL(`${API_BASE}/api/organizations`);
+          if (search) url.searchParams.set('search', search);
+          if (industry) url.searchParams.set('industry', industry);
+
+          const resp = await fetch(url.toString(), {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) setOrgs(await resp.json());
+        } catch (e) {
+          console.error(e);
+        }
+      }, [token, search, industry]);
+
+      useEffect(() => {
+        loadOrgs();
+      }, [loadOrgs]);
+
+      return (
+        <div>
+          <div className="alert alert-info py-2 small d-flex align-items-center mb-3">
+            <i className="bi bi-shield-shaded fs-4 me-2"></i>
+            <div>
+              <strong>Соблюдение 152-ФЗ и правило открытости:</strong> Реестр компаний и эксплуатантов полностью открыт (наименования, ИНН, ОГРН, отрасль доступны для всех). Персональные контактные данные физических лиц маскируются: <code>+7 (812) ***-**-33</code>.
+            </div>
+          </div>
+
+          <div className="row g-2 mb-3">
+            <div className="col-md-6">
+              <input 
+                type="text" 
+                className="form-control" 
+                placeholder="Поиск по наименованию или ИНН..." 
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+              />
+            </div>
+            <div className="col-md-4">
+              <select className="form-select" value={industry} onChange={e => setIndustry(e.target.value)}>
+                <option value="">Все отрасли применения</option>
+                <option value="АПК">АПК (Сельское хозяйство)</option>
+                <option value="ТЭК">ТЭК (Нефтегазовый сектор)</option>
+                <option value="Геодезия">Геодезия и картография</option>
+                <option value="Мониторинг">Мониторинг и безопасность</option>
+                <option value="Логистика">Логистика и доставка</option>
+              </select>
+            </div>
+            <div className="col-md-2">
+              <button className="btn btn-outline-secondary w-100" onClick={loadOrgs}>
+                <i className="bi bi-search me-1"></i> Искать
+              </button>
+            </div>
+          </div>
+
+          <div className="card card-eda">
+            <div className="card-body p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Организация</th>
+                      <th>ИНН / ОГРН</th>
+                      <th>Отрасль применения БАС</th>
+                      <th>Телефон (152-ФЗ)</th>
+                      <th>Email (152-ФЗ)</th>
+                      <th>ФНС СМЭВ 3</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orgs.map(o => (
+                      <tr key={o.organizationId}>
+                        <td className="fw-bold">{o.legalName}</td>
+                        <td>
+                          <div>ИНН: <span className="unmasked-val">{o.inn}</span></div>
+                          <div className="text-muted small">ОГРН: {o.ogrn || '—'}</div>
+                        </td>
+                        <td><span className="badge bg-light text-dark border">{o.industry}</span></td>
+                        <td><span className="masked-val">{o.contactPhoneMasked || '—'}</span></td>
+                        <td><span className="masked-val">{o.contactEmailMasked || '—'}</span></td>
+                        <td>
+                          {o.isVerified ? (
+                            <span className="badge bg-success"><i className="bi bi-check-circle me-1"></i> Проверено ФНС</span>
+                          ) : (
+                            <span className="badge bg-warning text-dark"><i className="bi bi-clock me-1"></i> На проверке</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // МОДУЛЬ 5: S3 ХРАНИЛИЩЕ ДОКУМЕНТОВ
+    // =========================================================================
+    function StorageModule({ token, user, showAlert }) {
+      const [attachments, setAttachments] = useState([]);
+      const [uploading, setUploading] = useState(false);
+      const fileInputRef = useRef(null);
+
+      const loadFiles = useCallback(async () => {
+        try {
+          const resp = await fetch(`${API_BASE}/api/storage/attachments?entityType=UavRegistration&entityId=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) setAttachments(await resp.json());
+        } catch (e) {
+          console.error(e);
+        }
+      }, [token]);
+
+      useEffect(() => {
+        loadFiles();
+      }, [loadFiles]);
+
+      const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploading(true);
+        try {
+          // Шаг 1: прямой upload в storage endpoint
+          const key = `uav-photos/2026/10/${Date.now()}_${file.name}`;
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const upResp = await fetch(`${API_BASE}/api/storage/upload-direct?bucket=uav-documents&key=${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+          });
+
+          if (!upResp.ok) throw new Error('Ошибка загрузки в S3');
+
+          // Шаг 2: фиксация метаданных и создание Outbox события
+          const commitResp = await fetch(`${API_BASE}/api/storage/attachments/commit`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              fileId: '00000000-0000-0000-0000-000000000000',
+              storageKey: key,
+              originalFileName: file.name,
+              contentType: file.type || 'image/jpeg',
+              fileSizeBytes: file.size,
+              sha256Checksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+              entityType: 'UavRegistration',
+              entityId: '1'
+            })
+          });
+
+          if (commitResp.ok) {
+            showAlert(`Файл ${file.name} загружен в S3! Антивирусный воркер проверяет хеш.`, 'success');
+            loadFiles();
+          }
+        } catch (err) {
+          showAlert(err.message, 'danger');
+        } finally {
+          setUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      };
+
+      return (
+        <div>
+          <div className="card card-eda mb-4">
+            <div className="card-eda-header">
+              <i className="bi bi-cloud-arrow-up-fill text-primary me-2"></i>
+              <span>Загрузка документации и фотографий БВС (4 ракурса) в S3</span>
+            </div>
+            <div className="card-body">
+              <p className="text-muted small">
+                Бинарные файлы изолированы от реляционной базы данных и сохраняются в S3-совместимом объектном хранилище. В БД хранятся исключительно метаданные (хеш SHA-256, размер, статус проверки).
+              </p>
+              <div className="d-flex align-items-center gap-3">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="form-control" 
+                  onChange={handleFileUpload} 
+                  disabled={uploading} 
+                />
+                {uploading && <div className="spinner-border text-primary spinner-border-sm"></div>}
+              </div>
+            </div>
+          </div>
+
+          <div className="card card-eda">
+            <div className="card-eda-header">Файлы в S3-хранилище</div>
+            <div className="card-body p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Имя файла</th>
+                      <th>Размер</th>
+                      <th>Контрольная сумма SHA-256</th>
+                      <th>Статус антивируса</th>
+                      <th>Ссылка</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attachments.map(f => (
+                      <tr key={f.fileId}>
+                        <td className="fw-bold"><i className="bi bi-file-earmark-image me-1"></i> {f.originalFileName}</td>
+                        <td>{(f.fileSizeBytes / 1024).toFixed(1)} КБ</td>
+                        <td><code>{f.sha256Checksum ? f.sha256Checksum.slice(0, 16) + '...' : '—'}</code></td>
+                        <td>
+                          {f.status === 'VerifiedClean' && <span className="badge bg-success"><i className="bi bi-shield-check me-1"></i> Безопасен</span>}
+                          {f.status === 'PendingVerification' && <span className="badge bg-warning text-dark"><i className="bi bi-hourglass me-1"></i> Сканирование</span>}
+                        </td>
+                        <td>
+                          {f.downloadUrl && (
+                            <a href={f.downloadUrl} target="_blank" className="btn btn-sm btn-outline-primary">
+                              <i className="bi bi-download me-1"></i> Скачать
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {attachments.length === 0 && (
+                      <tr><td colSpan="5" className="text-center py-4 text-muted">Файлов пока не загружено</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // МОДУЛЬ 6: БИЛЛИНГ И ФИНАНСЫ
+    // =========================================================================
+    function BillingModule({ token, user, showAlert }) {
+      const [invoices, setInvoices] = useState([]);
+
+      const loadInvoices = useCallback(async () => {
+        try {
+          const resp = await fetch(`${API_BASE}/api/billing/invoices`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) setInvoices(await resp.json());
+        } catch (e) {
+          console.error(e);
+        }
+      }, [token]);
+
+      useEffect(() => {
+        loadInvoices();
+      }, [loadInvoices]);
+
+      const handlePay = async (id) => {
+        try {
+          const resp = await fetch(`${API_BASE}/api/billing/invoices/${id}/pay`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ paymentMethod: 'CorporateCard' })
+          });
+
+          if (resp.ok) {
+            showAlert('Инвойс успешно оплачен!', 'success');
+            loadInvoices();
+          }
+        } catch (e) {
+          showAlert('Ошибка оплаты', 'danger');
+        }
+      };
+
+      const exportCsv = () => {
+        window.open(`${API_BASE}/api/billing/export?token=${token}`, '_blank');
+      };
+
+      return (
+        <div>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h5 className="mb-0 fw-bold">Финансовые инвойсы и взаиморасчеты</h5>
+            <button className="btn btn-sm btn-outline-success" onClick={exportCsv}>
+              <i className="bi bi-file-earmark-excel me-1"></i> Экспорт проводок в CSV
+            </button>
+          </div>
+
+          <div className="card card-eda">
+            <div className="card-body p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Номер счета</th>
+                      <th>Основание</th>
+                      <th>Плательщик</th>
+                      <th>Сумма к оплате</th>
+                      <th>Статус</th>
+                      <th>Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map(i => (
+                      <tr key={i.invoiceId}>
+                        <td className="fw-bold">{i.invoiceNumber}</td>
+                        <td>{i.orderId} ({i.serviceType})</td>
+                        <td>{i.payerName || 'Плательщик #1'}</td>
+                        <td className="fw-bold text-dark">{i.amountRub.toLocaleString('ru-RU')} руб.</td>
+                        <td>
+                          {i.paymentStatus === 'Paid' ? (
+                            <span className="badge bg-success"><i className="bi bi-check-circle me-1"></i> Оплачен ({i.paymentReference})</span>
+                          ) : (
+                            <span className="badge bg-warning text-dark"><i className="bi bi-hourglass me-1"></i> Ожидает оплаты</span>
+                          )}
+                        </td>
+                        <td>
+                          {i.paymentStatus !== 'Paid' && (
+                            <button className="btn btn-sm btn-primary" onClick={() => handlePay(i.invoiceId)}>
+                              <i className="bi bi-credit-card me-1"></i> Оплатить
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {invoices.length === 0 && (
+                      <tr><td colSpan="6" className="text-center py-4 text-muted">Счетов пока нет</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Инициализация React 18 приложения
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

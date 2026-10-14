@@ -1,0 +1,33 @@
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.deps.json
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.pdb
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.AssemblyInfoInputs.cache
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.AssemblyInfo.cs
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.csproj.CoreCompileInputs.cache
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\refint\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.pdb
+C:\Users\shmid\OneDrive\Документы\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\ref\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.deps.json
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.pdb
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.AssemblyInfoInputs.cache
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.AssemblyInfo.cs
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.csproj.CoreCompileInputs.cache
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\refint\UavFleetManagement.Domain.dll
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.pdb
+C:\Users\shmid\OneDrive\Документы\Новая папка\Desktop\BPLA_DB_it1-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\ref\UavFleetManagement.Domain.dll
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.deps.json
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.dll
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\bin\Debug\net8.0\UavFleetManagement.Domain.pdb
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.AssemblyInfoInputs.cache
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.AssemblyInfo.cs
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.csproj.CoreCompileInputs.cache
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.dll
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\refint\UavFleetManagement.Domain.dll
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\UavFleetManagement.Domain.pdb
+C:\Users\h123\Desktop\BPLA_DB_It_2-main\src\UavFleetManagement.Domain\obj\Debug\net8.0\ref\UavFleetManagement.Domain.dll
